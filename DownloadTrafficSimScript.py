@@ -6,29 +6,37 @@ import os
 import sys
 import shutil
 import urllib3
+import warnings
+import argparse
 from urllib.parse import urljoin, urlparse
 
 # --- Configuration ---
 TEST_DURATION_MINUTES = 5
 LOOP_DELAY = 5
 
-# Names of the input files (must be in same folder as script)
-WEBSITE_LIST_FILE = "websites.txt"
-FILE_LIST_FILE = "files.txt"
-
-# --- SSL Warning Suppression ---
-# Since we are ignoring SSL certificates, we suppress the warnings to keep the console clean.
+# --- SSL & Warning Suppression ---
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
 def get_urls_from_file(filename):
-    """Reads a text file and returns a list of non-empty URLs."""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_dir, filename)
+    """
+    Reads a text file and returns a list of non-empty URLs.
+    Checks current working directory first, then falls back to script directory.
+    """
+    # 1. Check if file exists as provided (relative to CWD or absolute)
+    if os.path.exists(filename):
+        file_path = filename
+    else:
+        # 2. Check relative to the script's own directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        file_path = os.path.join(script_dir, filename)
 
     if not os.path.exists(file_path):
-        print(f"WARNING: Could not find '{filename}' in {script_dir}")
+        print(f"WARNING: Could not find '{filename}' (Checked CWD and Script Directory)")
         return []
 
+    print(f"Reading targets from: {file_path}")
+    
     with open(file_path, 'r') as f:
         urls = [
             line.strip() for line in f 
@@ -61,14 +69,13 @@ def test_website_traffic(url_list):
         try:
             start_time = time.time()
             
-            # 1. Download Base (verify=False ignores SSL errors)
+            # 1. Download Base
             try:
                 response = requests.get(base_url, headers=headers, timeout=10, verify=False)
                 response.raise_for_status()
             except Exception as e:
-                # Truncate error message if it's too long
-                err_msg = str(e).split('\n')[0][:40]
-                print(f"{base_url[:28]:<30} | Error: {err_msg}...")
+                print(f"{base_url[:28]:<30} | FAILED")
+                print(f"    >>> ERROR: {e}")
                 continue
 
             base_filename = os.path.join(download_dir, "base_page.html")
@@ -77,8 +84,12 @@ def test_website_traffic(url_list):
             downloaded_files.append(base_filename)
             total_bytes += len(response.content)
 
-            # 2. Parse Links
-            soup = BeautifulSoup(response.content, 'html.parser')
+            # 2. Parse Links (Try lxml, fallback to html.parser)
+            try:
+                soup = BeautifulSoup(response.content, 'lxml')
+            except:
+                soup = BeautifulSoup(response.content, 'html.parser')
+
             all_links = [a.get('href') for a in soup.find_all('a', href=True)]
             
             valid_links = []
@@ -93,7 +104,7 @@ def test_website_traffic(url_list):
             num_to_choose = random.randint(2, 5)
             links_to_visit = random.sample(valid_links, min(len(valid_links), num_to_choose))
 
-            # 4. Download Sub-links (verify=False)
+            # 4. Download Sub-links
             for i, link in enumerate(links_to_visit):
                 try:
                     res = requests.get(link, headers=headers, timeout=10, verify=False)
@@ -113,6 +124,10 @@ def test_website_traffic(url_list):
             mbps = ((total_bytes * 8) / 1_000_000) / duration
 
             print(f"{base_url[:28]:<30} | {total_mb:<10.2f} | {duration:<10.2f} | {mbps:<15.2f}")
+
+        except Exception as e:
+            print(f"{base_url[:28]:<30} | FAILED (General)")
+            print(f"    >>> ERROR: {e}")
 
         finally:
             for f in downloaded_files:
@@ -150,7 +165,6 @@ def test_large_file_traffic(url_list):
         start_time = time.time()
         
         try:
-            # Added verify=False here
             with requests.get(url, headers=headers, stream=True, timeout=20, verify=False) as r:
                 r.raise_for_status()
                 total_size = int(r.headers.get('content-length', 0))
@@ -184,17 +198,35 @@ def test_large_file_traffic(url_list):
 
         except Exception as e:
             sys.stdout.write("\r" + " " * 100 + "\r")
-            err_msg = str(e).split('\n')[0][:40]
-            print(f"Error downloading {local_filename}: {err_msg}...")
+            print(f"{local_filename[:28]:<30} | FAILED")
+            print(f"    >>> ERROR: {e}")
+            
         finally:
             if os.path.exists(local_filename):
                 os.remove(local_filename)
 
 # --- Main Wrapper Loop ---
 def main():
-    print("Loading target lists...")
-    websites = get_urls_from_file(WEBSITE_LIST_FILE)
-    large_files = get_urls_from_file(FILE_LIST_FILE)
+    # Setup Argument Parser
+    parser = argparse.ArgumentParser(description="Bandwidth Stress Tester")
+    parser.add_argument(
+        "-w", "--websites", 
+        type=str, 
+        default="websites.txt", 
+        help="Path to the file containing website URLs (default: websites.txt)"
+    )
+    parser.add_argument(
+        "-f", "--files", 
+        type=str, 
+        default="files.txt", 
+        help="Path to the file containing large file URLs (default: files.txt)"
+    )
+    
+    args = parser.parse_args()
+
+    # Load targets based on arguments
+    websites = get_urls_from_file(args.websites)
+    large_files = get_urls_from_file(args.files)
 
     print(f"Loaded {len(websites)} websites and {len(large_files)} large files.")
 
