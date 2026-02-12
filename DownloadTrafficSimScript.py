@@ -9,6 +9,7 @@ import urllib3
 import warnings
 import argparse
 import datetime
+import socket
 from urllib.parse import urljoin, urlparse
 
 # --- Configuration ---
@@ -22,6 +23,9 @@ warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
 # --- Global Logger Setup ---
 CURRENT_LOG_FILE = None
+# Cache for DNS and GeoIP to avoid rate limiting and speed up loops
+# Format: { 'hostname': {'ip': '1.2.3.4', 'cc': 'US'} }
+HOST_CACHE = {}
 
 def setup_logging():
     """Creates the log directory and generates the log filename for this run."""
@@ -41,33 +45,61 @@ def setup_logging():
     filename = f"bandwidth_test_{timestamp}.log"
     CURRENT_LOG_FILE = os.path.join(log_dir, filename)
     
-    # Initialize file
     with open(CURRENT_LOG_FILE, 'w', encoding='utf-8') as f:
         f.write(f"--- Bandwidth Test Log: {timestamp} ---\n")
     
     print(f"Logging output to: {CURRENT_LOG_FILE}")
 
 def log(message, end="\n"):
-    """
-    Prints to console AND appends to the log file with a timestamp.
-    """
-    # 1. Print to Console (Standard Output)
+    """Prints to console AND appends to the log file with a timestamp."""
     print(message, end=end)
     
-    # 2. Write to File (With Timestamp)
     if CURRENT_LOG_FILE:
         try:
             ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             with open(CURRENT_LOG_FILE, 'a', encoding='utf-8') as f:
                 f.write(f"[{ts}] {message}\n")
-        except Exception as e:
-            print(f"!! Log Write Error: {e}")
+        except Exception:
+            pass
+
+def get_ip_info(url):
+    """
+    Resolves DNS and performs a simplified GeoIP lookup.
+    Returns a dict with 'ip' and 'cc' (Country Code).
+    """
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.netloc
+        
+        # Return cached result if we already looked this up
+        if hostname in HOST_CACHE:
+            return HOST_CACHE[hostname]
+
+        # 1. Resolve IP
+        ip = socket.gethostbyname(hostname)
+
+        # 2. Lookup Country (Using ip-api.com free API)
+        # Note: This API has a rate limit of 45 requests per minute.
+        # Since we cache results, we shouldn't hit this limit in standard usage.
+        country_code = "??"
+        try:
+            # Short timeout to prevent hanging the script on geo lookup
+            geo_resp = requests.get(f"http://ip-api.com/json/{ip}", timeout=2)
+            if geo_resp.status_code == 200:
+                data = geo_resp.json()
+                country_code = data.get('countryCode', '??')
+        except:
+            country_code = "Err"
+
+        result = {'ip': ip, 'cc': country_code}
+        HOST_CACHE[hostname] = result
+        return result
+
+    except Exception:
+        return {'ip': 'N/A', 'cc': 'N/A'}
 
 def get_urls_from_file(filename):
-    """
-    Reads a text file and returns a list of non-empty URLs.
-    Checks current working directory first, then falls back to script directory.
-    """
+    """Reads a text file and returns a list of non-empty URLs."""
     if os.path.exists(filename):
         file_path = filename
     else:
@@ -75,16 +107,12 @@ def get_urls_from_file(filename):
         file_path = os.path.join(script_dir, filename)
 
     if not os.path.exists(file_path):
-        log(f"WARNING: Could not find '{filename}' (Checked CWD and Script Directory)")
+        log(f"WARNING: Could not find '{filename}'")
         return []
 
     log(f"Reading targets from: {file_path}")
-    
     with open(file_path, 'r') as f:
-        urls = [
-            line.strip() for line in f 
-            if line.strip() and not line.strip().startswith("#")
-        ]
+        urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
     return urls
 
 # --- Function 1: Website Crawler ---
@@ -92,9 +120,9 @@ def test_website_traffic(url_list):
     if not url_list:
         return
 
-    log("\n" + "="*90)
+    log("\n" + "="*115)
     log(f"STARTING WEBSITE CRAWL TEST (SSL Verify Disabled)")
-    log("="*90)
+    log("="*115)
     
     download_dir = "temp_web_cache"
     if not os.path.exists(download_dir):
@@ -102,13 +130,18 @@ def test_website_traffic(url_list):
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
 
-    # CHANGED: Widened first column to 45 chars
-    log(f"{'Target Site':<45} | {'Size (MB)':<10} | {'Time (s)':<10} | {'Speed (Mbps)':<15}")
-    log("-" * 90)
+    # Updated Table Header
+    log(f"{'Target Site':<35} | {'IP Address':<15} | {'CC':<4} | {'Size (MB)':<10} | {'Time (s)':<10} | {'Speed (Mbps)':<15}")
+    log("-" * 115)
 
     for base_url in url_list:
         downloaded_files = []
         total_bytes = 0
+        
+        # Resolve IP/Country before starting download
+        info = get_ip_info(base_url)
+        ip_display = info['ip']
+        cc_display = info['cc']
         
         try:
             start_time = time.time()
@@ -118,8 +151,7 @@ def test_website_traffic(url_list):
                 response = requests.get(base_url, headers=headers, timeout=10, verify=False)
                 response.raise_for_status()
             except Exception as e:
-                # CHANGED: Truncate to 43 chars, padding to 45
-                log(f"{base_url[:43]:<45} | FAILED")
+                log(f"{base_url[:33]:<35} | {ip_display:<15} | {cc_display:<4} | FAILED")
                 log(f"    >>> ERROR: {e}")
                 continue
 
@@ -136,7 +168,6 @@ def test_website_traffic(url_list):
                 soup = BeautifulSoup(response.content, 'html.parser')
 
             all_links = [a.get('href') for a in soup.find_all('a', href=True)]
-            
             valid_links = []
             for link in all_links:
                 full_url = urljoin(base_url, link)
@@ -168,11 +199,10 @@ def test_website_traffic(url_list):
             total_mb = total_bytes / (1024 * 1024)
             mbps = ((total_bytes * 8) / 1_000_000) / duration
 
-            # CHANGED: Truncate to 43 chars, padding to 45
-            log(f"{base_url[:43]:<45} | {total_mb:<10.2f} | {duration:<10.2f} | {mbps:<15.2f}")
+            log(f"{base_url[:33]:<35} | {ip_display:<15} | {cc_display:<4} | {total_mb:<10.2f} | {duration:<10.2f} | {mbps:<15.2f}")
 
         except Exception as e:
-            log(f"{base_url[:43]:<45} | FAILED (General)")
+            log(f"{base_url[:33]:<35} | {ip_display:<15} | {cc_display:<4} | FAILED (General)")
             log(f"    >>> ERROR: {e}")
 
         finally:
@@ -195,20 +225,25 @@ def test_large_file_traffic(url_list):
     if not url_list:
         return
 
-    log("\n" + "="*90)
+    log("\n" + "="*115)
     log(f"STARTING LARGE FILE DOWNLOAD TEST (SSL Verify Disabled)")
-    log("="*90)
+    log("="*115)
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
     
-    # CHANGED: Widened first column to 45 chars for consistency
-    log(f"{'File Name':<45} | {'Size':<10} | {'Time (s)':<10} | {'Avg Speed':<15}")
-    log("-" * 90)
+    # Updated Table Header
+    log(f"{'File URL':<35} | {'IP Address':<15} | {'CC':<4} | {'Size':<10} | {'Time (s)':<10} | {'Avg Speed':<15}")
+    log("-" * 115)
 
     for url in url_list:
         local_filename = url.split('/')[-1]
         if not local_filename: local_filename = "temp_large_file.dat"
         
+        # Resolve IP/Country
+        info = get_ip_info(url)
+        ip_display = info['ip']
+        cc_display = info['cc']
+
         total_downloaded = 0
         start_time = time.time()
         
@@ -226,7 +261,7 @@ def test_large_file_traffic(url_list):
                             elapsed = time.time() - start_time
                             speed = (total_downloaded * 8) / (1_000_000 * elapsed) if elapsed > 0 else 0
                             
-                            # --- CONSOLE ONLY: Progress Bar ---
+                            # Progress Bar (Console Only)
                             if total_size > 0:
                                 percent = 100 * (total_downloaded / total_size)
                                 bar_len = 20
@@ -242,15 +277,14 @@ def test_large_file_traffic(url_list):
             size_mb = total_downloaded / (1024 * 1024)
             avg_mbps = ((total_downloaded * 8) / 1_000_000) / duration
 
-            # Clear progress bar from console
             sys.stdout.write("\r" + " " * 100 + "\r")
             
-            # CHANGED: Truncate to 43 chars, padding to 45
-            log(f"{local_filename[:43]:<45} | {size_mb:<10.2f} | {duration:<10.2f} | {avg_mbps:<15.2f}")
+            # Log Result with IP and CC
+            log(f"{url[:33]:<35} | {ip_display:<15} | {cc_display:<4} | {size_mb:<10.2f} | {duration:<10.2f} | {avg_mbps:<15.2f}")
 
         except Exception as e:
             sys.stdout.write("\r" + " " * 100 + "\r")
-            log(f"{local_filename[:43]:<45} | FAILED")
+            log(f"{url[:33]:<35} | {ip_display:<15} | {cc_display:<4} | FAILED")
             log(f"    >>> ERROR: {e}")
             
         finally:
@@ -262,18 +296,8 @@ def main():
     setup_logging()
 
     parser = argparse.ArgumentParser(description="Bandwidth Stress Tester")
-    parser.add_argument(
-        "-w", "--websites", 
-        type=str, 
-        default="websites.txt", 
-        help="Path to the file containing website URLs (default: websites.txt)"
-    )
-    parser.add_argument(
-        "-f", "--files", 
-        type=str, 
-        default="files.txt", 
-        help="Path to the file containing large file URLs (default: files.txt)"
-    )
+    parser.add_argument("-w", "--websites", type=str, default="websites.txt", help="Path to websites file")
+    parser.add_argument("-f", "--files", type=str, default="files.txt", help="Path to large files file")
     
     args = parser.parse_args()
 
