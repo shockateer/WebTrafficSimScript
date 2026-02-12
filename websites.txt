@@ -1,8 +1,12 @@
+# IP Finding Site
+http://icanhazip.com
+
 # Info Sites
 https://www.wikipedia.org
 https://www.thesaurus.com/
 https://www.encyclopedia.com/
 https://web.archive.org/
+https://thesun.co.uk
 
 # Shopping Sites
 https://www.amazon.com
@@ -41,3 +45,6 @@ https://www.khanacademy.org/kids
 https://www.diy.org/
 https://thekidshouldseethis.com/
 https://www.sesamestreet.org/
+
+# Gambling
+https://onlinecasino.com

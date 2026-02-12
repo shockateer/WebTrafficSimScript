@@ -6,7 +6,15 @@ https://dal.download.datapacket.com/100mb.bin
 https://sea.download.datapacket.com/100mb.bin
 https://scl.download.datapacket.com/100mb.bin
 https://lon.download.datapacket.com/100mb.bin
-http://speedtest.tele2.net/10MB.zip
+
+# Malware TEST files
+https://secure.eicar.org/eicar.com
+https://secure.eicar.org/eicar_com2.zip
+https://filegen.fortinet.com/v1/sandbox-file?file_name=windows.exe
+https://filestore.fortinet.com/fortiguard/test-files/ml/ai_sample1
+https://filegen.fortinet.com/v1/sandbox-file?file_name=linux.sh
+http://wildfire.paloaltonetworks.com/publicapi/test/elf
+https://www.ikarussecurity.com/wp-content/downloads/eicar_com.zip
 
 # Linux ISOs (only use if you have high bandwidth)
 https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.3.0-amd64-netinst.iso

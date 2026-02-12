@@ -62,6 +62,17 @@ def log(message, end="\n"):
         except Exception:
             pass
 
+def get_system_public_ip():
+    """Fetches the external public IP address of this system."""
+    try:
+        # api.ipify.org is a simple service that returns just the IP as text
+        response = requests.get('https://api.ipify.org', timeout=5)
+        if response.status_code == 200:
+            return response.text.strip()
+    except Exception:
+        return "Unavailable"
+    return "Unavailable"
+
 def get_ip_info(url):
     """
     Resolves DNS and performs a simplified GeoIP lookup.
@@ -128,7 +139,7 @@ def test_website_traffic(url_list):
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
 
-    # Updated Table Header (60 chars for Target Site)
+    # Updated Table Header
     log(f"{'Target Site':<60} | {'IP Address':<15} | {'CC':<4} | {'Size (MB)':<10} | {'Time (s)':<10} | {'Speed (Mbps)':<15}")
     log("-" * 130)
 
@@ -232,7 +243,7 @@ def test_large_file_traffic(url_list):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
     
     # Updated Table Header (60 chars for File URL)
-    log(f"{'File URL':<60} | {'IP Address':<15} | {'CC':<4} | {'Size (MB)':<10} | {'Time (s)':<10} | {'Avg Speed':<15}")
+    log(f"{'File URL':<60} | {'IP Address':<15} | {'CC':<4} | {'Size':<10} | {'Time (s)':<10} | {'Avg Speed':<15}")
     log("-" * 130)
 
     for url in url_list:
@@ -294,6 +305,12 @@ def test_large_file_traffic(url_list):
 # --- Main Wrapper Loop ---
 def main():
     setup_logging()
+
+    # --- Display System Public IP ---
+    log("Checking System Public IP Address...")
+    public_ip = get_system_public_ip()
+    log(f"System Public IP: {public_ip}")
+    log("-" * 30)
 
     parser = argparse.ArgumentParser(description="Bandwidth Stress Tester")
     parser.add_argument("-w", "--websites", type=str, default="websites.txt", help="Path to websites file")
