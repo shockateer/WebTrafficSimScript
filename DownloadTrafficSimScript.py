@@ -232,7 +232,7 @@ def test_large_file_traffic(url_list):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
     
     # Updated Table Header (60 chars for File URL)
-    log(f"{'File URL':<60} | {'IP Address':<15} | {'CC':<4} | {'Size':<10} | {'Time (s)':<10} | {'Avg Speed':<15}")
+    log(f"{'File URL':<60} | {'IP Address':<15} | {'CC':<4} | {'Size (MB)':<10} | {'Time (s)':<10} | {'Avg Speed':<15}")
     log("-" * 130)
 
     for url in url_list:
