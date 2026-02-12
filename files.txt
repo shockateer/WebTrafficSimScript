@@ -12,10 +12,9 @@ https://lon.download.datapacket.com/100mb.bin
 
 # Linux ISOs (only use if you have high bandwidth)
 https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.3.0-amd64-netinst.iso
-https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/debian-13.3.0-amd64-DVD-1.iso
 https://mirrors.seas.harvard.edu/linuxmint/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso
-https://ubuntu.com/download/server/thank-you?version=24.04.4&architecture=amd64&lts=true
 http://tinycorelinux.net/15.x/x86/release/Core-current.iso
+https://ubuntu.com/download/server/thank-you?version=24.04.4&architecture=amd64&lts=true
 
 
 

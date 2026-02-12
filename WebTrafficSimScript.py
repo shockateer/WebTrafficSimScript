@@ -79,8 +79,6 @@ def get_ip_info(url):
         ip = socket.gethostbyname(hostname)
 
         # 2. Lookup Country (Using ip-api.com free API)
-        # Note: This API has a rate limit of 45 requests per minute.
-        # Since we cache results, we shouldn't hit this limit in standard usage.
         country_code = "??"
         try:
             # Short timeout to prevent hanging the script on geo lookup
@@ -120,9 +118,9 @@ def test_website_traffic(url_list):
     if not url_list:
         return
 
-    log("\n" + "="*115)
+    log("\n" + "="*130)
     log(f"STARTING WEBSITE CRAWL TEST (SSL Verify Disabled)")
-    log("="*115)
+    log("="*130)
     
     download_dir = "temp_web_cache"
     if not os.path.exists(download_dir):
@@ -130,9 +128,9 @@ def test_website_traffic(url_list):
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
 
-    # Updated Table Header
-    log(f"{'Target Site':<35} | {'IP Address':<15} | {'CC':<4} | {'Size (MB)':<10} | {'Time (s)':<10} | {'Speed (Mbps)':<15}")
-    log("-" * 115)
+    # Updated Table Header (60 chars for Target Site)
+    log(f"{'Target Site':<60} | {'IP Address':<15} | {'CC':<4} | {'Size (MB)':<10} | {'Time (s)':<10} | {'Speed (Mbps)':<15}")
+    log("-" * 130)
 
     for base_url in url_list:
         downloaded_files = []
@@ -151,7 +149,8 @@ def test_website_traffic(url_list):
                 response = requests.get(base_url, headers=headers, timeout=10, verify=False)
                 response.raise_for_status()
             except Exception as e:
-                log(f"{base_url[:33]:<35} | {ip_display:<15} | {cc_display:<4} | FAILED")
+                # Truncate base_url to 58 chars to fit in 60 column
+                log(f"{base_url[:58]:<60} | {ip_display:<15} | {cc_display:<4} | FAILED")
                 log(f"    >>> ERROR: {e}")
                 continue
 
@@ -199,10 +198,11 @@ def test_website_traffic(url_list):
             total_mb = total_bytes / (1024 * 1024)
             mbps = ((total_bytes * 8) / 1_000_000) / duration
 
-            log(f"{base_url[:33]:<35} | {ip_display:<15} | {cc_display:<4} | {total_mb:<10.2f} | {duration:<10.2f} | {mbps:<15.2f}")
+            # Truncate base_url to 58 chars to fit in 60 column
+            log(f"{base_url[:58]:<60} | {ip_display:<15} | {cc_display:<4} | {total_mb:<10.2f} | {duration:<10.2f} | {mbps:<15.2f}")
 
         except Exception as e:
-            log(f"{base_url[:33]:<35} | {ip_display:<15} | {cc_display:<4} | FAILED (General)")
+            log(f"{base_url[:58]:<60} | {ip_display:<15} | {cc_display:<4} | FAILED (General)")
             log(f"    >>> ERROR: {e}")
 
         finally:
@@ -225,15 +225,15 @@ def test_large_file_traffic(url_list):
     if not url_list:
         return
 
-    log("\n" + "="*115)
+    log("\n" + "="*130)
     log(f"STARTING LARGE FILE DOWNLOAD TEST (SSL Verify Disabled)")
-    log("="*115)
+    log("="*130)
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
     
-    # Updated Table Header
-    log(f"{'File URL':<35} | {'IP Address':<15} | {'CC':<4} | {'Size':<10} | {'Time (s)':<10} | {'Avg Speed':<15}")
-    log("-" * 115)
+    # Updated Table Header (60 chars for File URL)
+    log(f"{'File URL':<60} | {'IP Address':<15} | {'CC':<4} | {'Size':<10} | {'Time (s)':<10} | {'Avg Speed':<15}")
+    log("-" * 130)
 
     for url in url_list:
         local_filename = url.split('/')[-1]
@@ -279,12 +279,12 @@ def test_large_file_traffic(url_list):
 
             sys.stdout.write("\r" + " " * 100 + "\r")
             
-            # Log Result with IP and CC
-            log(f"{url[:33]:<35} | {ip_display:<15} | {cc_display:<4} | {size_mb:<10.2f} | {duration:<10.2f} | {avg_mbps:<15.2f}")
+            # Log Result with IP and CC, truncated URL to 58 chars
+            log(f"{url[:58]:<60} | {ip_display:<15} | {cc_display:<4} | {size_mb:<10.2f} | {duration:<10.2f} | {avg_mbps:<15.2f}")
 
         except Exception as e:
             sys.stdout.write("\r" + " " * 100 + "\r")
-            log(f"{url[:33]:<35} | {ip_display:<15} | {cc_display:<4} | FAILED")
+            log(f"{url[:58]:<60} | {ip_display:<15} | {cc_display:<4} | FAILED")
             log(f"    >>> ERROR: {e}")
             
         finally:
