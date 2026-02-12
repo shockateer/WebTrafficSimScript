@@ -1,11 +1,16 @@
+# Info Sites
+https://www.wikipedia.org
+
 # Shopping Sites
 https://www.amazon.com
 https://www.walmart.com
 https://www.target.com
+https://www.etsy.com/
 
 # News Sites
 https://www.cnn.com
 https://www.bbc.com
+https://www.yahoo.com
 
 # Tech Sites
 https://www.python.org
@@ -17,5 +22,13 @@ https://www.example.com
 http://www.example.net
 http://www.example.org
 
-# Random Sites
+# Random Enteertainment Sites
 https://ytmnd.com
+https://www.instagram.com
+
+# Kids Sites
+https://pbskids.org/
+https://www.khanacademy.org/kids
+https://www.diy.org/
+https://thekidshouldseethis.com/
+https://www.sesamestreet.org/
