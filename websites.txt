@@ -1,16 +1,22 @@
 # Info Sites
 https://www.wikipedia.org
+https://www.thesaurus.com/
+https://www.encyclopedia.com/
+https://web.archive.org/
 
 # Shopping Sites
 https://www.amazon.com
 https://www.walmart.com
 https://www.target.com
 https://www.etsy.com/
+https://www.woot.com/
 
 # News Sites
 https://www.cnn.com
 https://www.bbc.com
 https://www.yahoo.com
+https://www.caranddriver.com/
+https://news.google.com/home?hl=en-US&gl=US&ceid=US:en
 
 # Tech Sites
 https://www.python.org
@@ -22,9 +28,12 @@ https://www.example.com
 http://www.example.net
 http://www.example.org
 
-# Random Enteertainment Sites
+# Random Entertainment and Social Media Sites
 https://ytmnd.com
 https://www.instagram.com
+https://www.facebook.com/
+https://www.reddit.com/
+https://bsky.app/
 
 # Kids Sites
 https://pbskids.org/
