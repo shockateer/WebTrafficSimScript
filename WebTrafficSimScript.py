@@ -78,7 +78,7 @@ def test_website_traffic(url_list):
             total_bytes += len(response.content)
 
             # 2. Parse Links
-            soup = BeautifulSoup(response.content, 'html.parser')
+            soup = BeautifulSoup(response.content, 'lxml')
             all_links = [a.get('href') for a in soup.find_all('a', href=True)]
             
             valid_links = []
