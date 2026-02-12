@@ -8,34 +8,77 @@ import shutil
 import urllib3
 import warnings
 import argparse
+import datetime
 from urllib.parse import urljoin, urlparse
 
 # --- Configuration ---
 TEST_DURATION_MINUTES = 5
 LOOP_DELAY = 5
+LOG_FOLDER_NAME = "OUTPUT_LOGS"
 
 # --- SSL & Warning Suppression ---
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
+
+# --- Global Logger Setup ---
+CURRENT_LOG_FILE = None
+
+def setup_logging():
+    """Creates the log directory and generates the log filename for this run."""
+    global CURRENT_LOG_FILE
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    log_dir = os.path.join(script_dir, LOG_FOLDER_NAME)
+    
+    if not os.path.exists(log_dir):
+        try:
+            os.makedirs(log_dir)
+        except OSError as e:
+            print(f"Error creating log directory: {e}")
+            return
+
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"bandwidth_test_{timestamp}.log"
+    CURRENT_LOG_FILE = os.path.join(log_dir, filename)
+    
+    # Initialize file
+    with open(CURRENT_LOG_FILE, 'w', encoding='utf-8') as f:
+        f.write(f"--- Bandwidth Test Log: {timestamp} ---\n")
+    
+    print(f"Logging output to: {CURRENT_LOG_FILE}")
+
+def log(message, end="\n"):
+    """
+    Prints to console AND appends to the log file with a timestamp.
+    """
+    # 1. Print to Console (Standard Output)
+    print(message, end=end)
+    
+    # 2. Write to File (With Timestamp)
+    if CURRENT_LOG_FILE:
+        try:
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(CURRENT_LOG_FILE, 'a', encoding='utf-8') as f:
+                f.write(f"[{ts}] {message}\n")
+        except Exception as e:
+            print(f"!! Log Write Error: {e}")
 
 def get_urls_from_file(filename):
     """
     Reads a text file and returns a list of non-empty URLs.
     Checks current working directory first, then falls back to script directory.
     """
-    # 1. Check if file exists as provided (relative to CWD or absolute)
     if os.path.exists(filename):
         file_path = filename
     else:
-        # 2. Check relative to the script's own directory
         script_dir = os.path.dirname(os.path.abspath(__file__))
         file_path = os.path.join(script_dir, filename)
 
     if not os.path.exists(file_path):
-        print(f"WARNING: Could not find '{filename}' (Checked CWD and Script Directory)")
+        log(f"WARNING: Could not find '{filename}' (Checked CWD and Script Directory)")
         return []
 
-    print(f"Reading targets from: {file_path}")
+    log(f"Reading targets from: {file_path}")
     
     with open(file_path, 'r') as f:
         urls = [
@@ -49,9 +92,9 @@ def test_website_traffic(url_list):
     if not url_list:
         return
 
-    print("\n" + "="*80)
-    print(f"STARTING WEBSITE CRAWL TEST (SSL Verify Disabled)")
-    print("="*80)
+    log("\n" + "="*90)
+    log(f"STARTING WEBSITE CRAWL TEST (SSL Verify Disabled)")
+    log("="*90)
     
     download_dir = "temp_web_cache"
     if not os.path.exists(download_dir):
@@ -59,8 +102,9 @@ def test_website_traffic(url_list):
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
 
-    print(f"{'Target Site':<30} | {'Size (MB)':<10} | {'Time (s)':<10} | {'Speed (Mbps)':<15}")
-    print("-" * 75)
+    # CHANGED: Widened first column to 45 chars
+    log(f"{'Target Site':<45} | {'Size (MB)':<10} | {'Time (s)':<10} | {'Speed (Mbps)':<15}")
+    log("-" * 90)
 
     for base_url in url_list:
         downloaded_files = []
@@ -74,8 +118,9 @@ def test_website_traffic(url_list):
                 response = requests.get(base_url, headers=headers, timeout=10, verify=False)
                 response.raise_for_status()
             except Exception as e:
-                print(f"{base_url[:28]:<30} | FAILED")
-                print(f"    >>> ERROR: {e}")
+                # CHANGED: Truncate to 43 chars, padding to 45
+                log(f"{base_url[:43]:<45} | FAILED")
+                log(f"    >>> ERROR: {e}")
                 continue
 
             base_filename = os.path.join(download_dir, "base_page.html")
@@ -84,7 +129,7 @@ def test_website_traffic(url_list):
             downloaded_files.append(base_filename)
             total_bytes += len(response.content)
 
-            # 2. Parse Links (Try lxml, fallback to html.parser)
+            # 2. Parse Links
             try:
                 soup = BeautifulSoup(response.content, 'lxml')
             except:
@@ -123,11 +168,12 @@ def test_website_traffic(url_list):
             total_mb = total_bytes / (1024 * 1024)
             mbps = ((total_bytes * 8) / 1_000_000) / duration
 
-            print(f"{base_url[:28]:<30} | {total_mb:<10.2f} | {duration:<10.2f} | {mbps:<15.2f}")
+            # CHANGED: Truncate to 43 chars, padding to 45
+            log(f"{base_url[:43]:<45} | {total_mb:<10.2f} | {duration:<10.2f} | {mbps:<15.2f}")
 
         except Exception as e:
-            print(f"{base_url[:28]:<30} | FAILED (General)")
-            print(f"    >>> ERROR: {e}")
+            log(f"{base_url[:43]:<45} | FAILED (General)")
+            log(f"    >>> ERROR: {e}")
 
         finally:
             for f in downloaded_files:
@@ -149,13 +195,15 @@ def test_large_file_traffic(url_list):
     if not url_list:
         return
 
-    print("\n" + "="*80)
-    print(f"STARTING LARGE FILE DOWNLOAD TEST (SSL Verify Disabled)")
-    print("="*80)
+    log("\n" + "="*90)
+    log(f"STARTING LARGE FILE DOWNLOAD TEST (SSL Verify Disabled)")
+    log("="*90)
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
-    print(f"{'File Name':<30} | {'Size':<10} | {'Time (s)':<10} | {'Avg Speed':<15}")
-    print("-" * 75)
+    
+    # CHANGED: Widened first column to 45 chars for consistency
+    log(f"{'File Name':<45} | {'Size':<10} | {'Time (s)':<10} | {'Avg Speed':<15}")
+    log("-" * 90)
 
     for url in url_list:
         local_filename = url.split('/')[-1]
@@ -178,6 +226,7 @@ def test_large_file_traffic(url_list):
                             elapsed = time.time() - start_time
                             speed = (total_downloaded * 8) / (1_000_000 * elapsed) if elapsed > 0 else 0
                             
+                            # --- CONSOLE ONLY: Progress Bar ---
                             if total_size > 0:
                                 percent = 100 * (total_downloaded / total_size)
                                 bar_len = 20
@@ -193,13 +242,16 @@ def test_large_file_traffic(url_list):
             size_mb = total_downloaded / (1024 * 1024)
             avg_mbps = ((total_downloaded * 8) / 1_000_000) / duration
 
+            # Clear progress bar from console
             sys.stdout.write("\r" + " " * 100 + "\r")
-            print(f"{local_filename[:28]:<30} | {size_mb:<10.2f} | {duration:<10.2f} | {avg_mbps:<15.2f}")
+            
+            # CHANGED: Truncate to 43 chars, padding to 45
+            log(f"{local_filename[:43]:<45} | {size_mb:<10.2f} | {duration:<10.2f} | {avg_mbps:<15.2f}")
 
         except Exception as e:
             sys.stdout.write("\r" + " " * 100 + "\r")
-            print(f"{local_filename[:28]:<30} | FAILED")
-            print(f"    >>> ERROR: {e}")
+            log(f"{local_filename[:43]:<45} | FAILED")
+            log(f"    >>> ERROR: {e}")
             
         finally:
             if os.path.exists(local_filename):
@@ -207,7 +259,8 @@ def test_large_file_traffic(url_list):
 
 # --- Main Wrapper Loop ---
 def main():
-    # Setup Argument Parser
+    setup_logging()
+
     parser = argparse.ArgumentParser(description="Bandwidth Stress Tester")
     parser.add_argument(
         "-w", "--websites", 
@@ -224,27 +277,27 @@ def main():
     
     args = parser.parse_args()
 
-    # Load targets based on arguments
+    log("Loading target lists...")
     websites = get_urls_from_file(args.websites)
     large_files = get_urls_from_file(args.files)
 
-    print(f"Loaded {len(websites)} websites and {len(large_files)} large files.")
+    log(f"Loaded {len(websites)} websites and {len(large_files)} large files.")
 
     if not websites and not large_files:
-        print("Error: No URLs found in text files. Exiting.")
+        log("Error: No URLs found in text files. Exiting.")
         return
 
     start_time = time.time()
     end_time = start_time + (TEST_DURATION_MINUTES * 60)
     iteration = 1
     
-    print(f"Starting Bandwidth Stress Test for {TEST_DURATION_MINUTES} minutes.")
-    print(f"Press Ctrl+C to stop manually.\n")
+    log(f"Starting Bandwidth Stress Test for {TEST_DURATION_MINUTES} minutes.")
+    log(f"Press Ctrl+C to stop manually.\n")
 
     try:
         while time.time() < end_time:
             current_time_str = time.strftime("%H:%M:%S", time.localtime())
-            print(f"\n>>> ITERATION {iteration} STARTING AT {current_time_str} <<<")
+            log(f"\n>>> ITERATION {iteration} STARTING AT {current_time_str} <<<")
             
             #test_website_traffic(websites)
             test_large_file_traffic(large_files)
@@ -252,13 +305,13 @@ def main():
             iteration += 1
             
             if time.time() < end_time:
-                print(f"\nIteration complete. Cooling down for {LOOP_DELAY} seconds...")
+                log(f"\nIteration complete. Cooling down for {LOOP_DELAY} seconds...")
                 time.sleep(LOOP_DELAY)
             
     except KeyboardInterrupt:
-        print("\n\nTest stopped by user.")
+        log("\n\nTest stopped by user.")
     
-    print("\nTest Complete.")
+    log("\nTest Complete.")
 
 if __name__ == "__main__":
     main()
