@@ -1,0 +1,8 @@
+# Linux ISOs (only use if you have high bandwidth)
+https://releases.ubuntu.com/24.04.4/ubuntu-24.04.4-desktop-amd64.iso
+http://tinycorelinux.net/15.x/x86/release/Core-current.iso
+
+# Speed test files
+http://speedtest.tele2.net/10MB.zip
+http://speedtest.tele2.net/100MB.zip
+
