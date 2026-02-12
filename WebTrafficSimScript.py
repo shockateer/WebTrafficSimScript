@@ -5,6 +5,7 @@ import time
 import os
 import sys
 import shutil
+import urllib3
 from urllib.parse import urljoin, urlparse
 
 # --- Configuration ---
@@ -15,9 +16,12 @@ LOOP_DELAY = 5
 WEBSITE_LIST_FILE = "websites.txt"
 FILE_LIST_FILE = "files.txt"
 
+# --- SSL Warning Suppression ---
+# Since we are ignoring SSL certificates, we suppress the warnings to keep the console clean.
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 def get_urls_from_file(filename):
     """Reads a text file and returns a list of non-empty URLs."""
-    # Ensure we look in the same directory as the running script
     script_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(script_dir, filename)
 
@@ -26,7 +30,6 @@ def get_urls_from_file(filename):
         return []
 
     with open(file_path, 'r') as f:
-        # Read lines, strip whitespace, ignore empty lines or comments (#)
         urls = [
             line.strip() for line in f 
             if line.strip() and not line.strip().startswith("#")
@@ -36,11 +39,10 @@ def get_urls_from_file(filename):
 # --- Function 1: Website Crawler ---
 def test_website_traffic(url_list):
     if not url_list:
-        print("Skipping Website Test (No URLs provided).")
         return
 
     print("\n" + "="*80)
-    print(f"STARTING WEBSITE CRAWL TEST")
+    print(f"STARTING WEBSITE CRAWL TEST (SSL Verify Disabled)")
     print("="*80)
     
     download_dir = "temp_web_cache"
@@ -59,12 +61,14 @@ def test_website_traffic(url_list):
         try:
             start_time = time.time()
             
-            # 1. Download Base
+            # 1. Download Base (verify=False ignores SSL errors)
             try:
-                response = requests.get(base_url, headers=headers, timeout=10)
+                response = requests.get(base_url, headers=headers, timeout=10, verify=False)
                 response.raise_for_status()
             except Exception as e:
-                print(f"{base_url[:28]:<30} | Error accessing site")
+                # Truncate error message if it's too long
+                err_msg = str(e).split('\n')[0][:40]
+                print(f"{base_url[:28]:<30} | Error: {err_msg}...")
                 continue
 
             base_filename = os.path.join(download_dir, "base_page.html")
@@ -89,10 +93,10 @@ def test_website_traffic(url_list):
             num_to_choose = random.randint(2, 5)
             links_to_visit = random.sample(valid_links, min(len(valid_links), num_to_choose))
 
-            # 4. Download Sub-links
+            # 4. Download Sub-links (verify=False)
             for i, link in enumerate(links_to_visit):
                 try:
-                    res = requests.get(link, headers=headers, timeout=10)
+                    res = requests.get(link, headers=headers, timeout=10, verify=False)
                     if res.status_code == 200:
                         fname = os.path.join(download_dir, f"sub_page_{i}.html")
                         with open(fname, 'wb') as f:
@@ -128,11 +132,10 @@ def format_size(size_in_bytes):
 
 def test_large_file_traffic(url_list):
     if not url_list:
-        print("Skipping Large File Test (No URLs provided).")
         return
 
     print("\n" + "="*80)
-    print(f"STARTING LARGE FILE DOWNLOAD TEST")
+    print(f"STARTING LARGE FILE DOWNLOAD TEST (SSL Verify Disabled)")
     print("="*80)
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
@@ -147,7 +150,8 @@ def test_large_file_traffic(url_list):
         start_time = time.time()
         
         try:
-            with requests.get(url, headers=headers, stream=True, timeout=20) as r:
+            # Added verify=False here
+            with requests.get(url, headers=headers, stream=True, timeout=20, verify=False) as r:
                 r.raise_for_status()
                 total_size = int(r.headers.get('content-length', 0))
                 
@@ -180,15 +184,14 @@ def test_large_file_traffic(url_list):
 
         except Exception as e:
             sys.stdout.write("\r" + " " * 100 + "\r")
-            print(f"Error downloading {local_filename}: {e}")
+            err_msg = str(e).split('\n')[0][:40]
+            print(f"Error downloading {local_filename}: {err_msg}...")
         finally:
             if os.path.exists(local_filename):
                 os.remove(local_filename)
 
 # --- Main Wrapper Loop ---
-## Setting this version up to only do websites
 def main():
-    # 1. Load targets from text files
     print("Loading target lists...")
     websites = get_urls_from_file(WEBSITE_LIST_FILE)
     large_files = get_urls_from_file(FILE_LIST_FILE)
@@ -212,7 +215,7 @@ def main():
             print(f"\n>>> ITERATION {iteration} STARTING AT {current_time_str} <<<")
             
             test_website_traffic(websites)
-            ###  test_large_file_traffic(large_files)
+            #test_large_file_traffic(large_files)
             
             iteration += 1
             
