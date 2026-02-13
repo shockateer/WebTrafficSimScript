@@ -12,9 +12,7 @@ import datetime
 import socket
 from urllib.parse import urljoin, urlparse
 
-# --- Configuration ---
-TEST_DURATION_MINUTES = 5
-LOOP_DELAY = 5
+# --- Configuration Constants (Defaults handled in argparse) ---
 LOG_FOLDER_NAME = "OUTPUT_LOGS"
 
 # --- SSL & Warning Suppression ---
@@ -23,8 +21,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
 # --- Global Logger Setup ---
 CURRENT_LOG_FILE = None
-# Cache for DNS and GeoIP to avoid rate limiting and speed up loops
-# Format: { 'hostname': {'ip': '1.2.3.4', 'cc': 'US'} }
 HOST_CACHE = {}
 
 def setup_logging():
@@ -65,7 +61,6 @@ def log(message, end="\n"):
 def get_system_public_ip():
     """Fetches the external public IP address of this system."""
     try:
-        # api.ipify.org is a simple service that returns just the IP as text
         response = requests.get('https://api.ipify.org', timeout=5)
         if response.status_code == 200:
             return response.text.strip()
@@ -82,17 +77,13 @@ def get_ip_info(url):
         parsed = urlparse(url)
         hostname = parsed.netloc
         
-        # Return cached result if we already looked this up
         if hostname in HOST_CACHE:
             return HOST_CACHE[hostname]
 
-        # 1. Resolve IP
         ip = socket.gethostbyname(hostname)
 
-        # 2. Lookup Country (Using ip-api.com free API)
         country_code = "??"
         try:
-            # Short timeout to prevent hanging the script on geo lookup
             geo_resp = requests.get(f"http://ip-api.com/json/{ip}", timeout=2)
             if geo_resp.status_code == 200:
                 data = geo_resp.json()
@@ -125,7 +116,7 @@ def get_urls_from_file(filename):
     return urls
 
 # --- Function 1: Website Crawler ---
-def test_website_traffic(url_list):
+def test_website_traffic(url_list, request_delay):
     if not url_list:
         return
 
@@ -139,7 +130,6 @@ def test_website_traffic(url_list):
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
 
-    # Updated Table Header
     log(f"{'Target Site':<60} | {'IP Address':<15} | {'CC':<4} | {'Size (MB)':<10} | {'Time (s)':<10} | {'Speed (Mbps)':<15}")
     log("-" * 130)
 
@@ -147,7 +137,6 @@ def test_website_traffic(url_list):
         downloaded_files = []
         total_bytes = 0
         
-        # Resolve IP/Country before starting download
         info = get_ip_info(base_url)
         ip_display = info['ip']
         cc_display = info['cc']
@@ -160,7 +149,6 @@ def test_website_traffic(url_list):
                 response = requests.get(base_url, headers=headers, timeout=10, verify=False)
                 response.raise_for_status()
             except Exception as e:
-                # Truncate base_url to 58 chars to fit in 60 column
                 log(f"{base_url[:58]:<60} | {ip_display:<15} | {cc_display:<4} | FAILED")
                 log(f"    >>> ERROR: {e}")
                 continue
@@ -170,6 +158,10 @@ def test_website_traffic(url_list):
                 f.write(response.content)
             downloaded_files.append(base_filename)
             total_bytes += len(response.content)
+
+            # Apply Request Delay
+            if request_delay > 0:
+                time.sleep(request_delay)
 
             # 2. Parse Links
             try:
@@ -200,17 +192,32 @@ def test_website_traffic(url_list):
                             f.write(res.content)
                         downloaded_files.append(fname)
                         total_bytes += len(res.content)
+                    
+                    # Apply Request Delay after every sub-page
+                    if request_delay > 0:
+                        time.sleep(request_delay)
+
                 except:
                     continue
 
             # 5. Stats
             duration = time.time() - start_time
-            if duration == 0: duration = 0.001
-            total_mb = total_bytes / (1024 * 1024)
-            mbps = ((total_bytes * 8) / 1_000_000) / duration
+            # Subtract the artificial delays from the duration calculation to get true speed?
+            # Normally, for bandwidth testing, we want RAW download time. 
+            # However, since the delays happen sequentially, 'duration' currently INCLUDES sleep time.
+            # To get accurate Mbps of the actual transfer, we should ideally exclude sleep time.
+            # BUT, to keep it simple and show wall-clock time for the task, we leave it. 
+            # Note: This will make Mbps look lower if delays are high.
+            
+            # Recalculating duration to exclude sleep for accurate Mbps reporting:
+            total_slept = (1 + len(links_to_visit)) * request_delay
+            active_duration = duration - total_slept
+            if active_duration <= 0: active_duration = 0.001
 
-            # Truncate base_url to 58 chars to fit in 60 column
-            log(f"{base_url[:58]:<60} | {ip_display:<15} | {cc_display:<4} | {total_mb:<10.2f} | {duration:<10.2f} | {mbps:<15.2f}")
+            total_mb = total_bytes / (1024 * 1024)
+            mbps = ((total_bytes * 8) / 1_000_000) / active_duration
+
+            log(f"{base_url[:58]:<60} | {ip_display:<15} | {cc_display:<4} | {total_mb:<10.2f} | {active_duration:<10.2f} | {mbps:<15.2f}")
 
         except Exception as e:
             log(f"{base_url[:58]:<60} | {ip_display:<15} | {cc_display:<4} | FAILED (General)")
@@ -232,7 +239,7 @@ def format_size(size_in_bytes):
     if size_in_bytes >= 1024**3: return f"{size_in_bytes / (1024**3):.2f} GB"
     return f"{size_in_bytes / (1024**2):.2f} MB"
 
-def test_large_file_traffic(url_list):
+def test_large_file_traffic(url_list, request_delay):
     if not url_list:
         return
 
@@ -242,7 +249,6 @@ def test_large_file_traffic(url_list):
 
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Bot/Testing'}
     
-    # Updated Table Header (60 chars for File URL)
     log(f"{'File URL':<60} | {'IP Address':<15} | {'CC':<4} | {'Size':<10} | {'Time (s)':<10} | {'Avg Speed':<15}")
     log("-" * 130)
 
@@ -250,7 +256,6 @@ def test_large_file_traffic(url_list):
         local_filename = url.split('/')[-1]
         if not local_filename: local_filename = "temp_large_file.dat"
         
-        # Resolve IP/Country
         info = get_ip_info(url)
         ip_display = info['ip']
         cc_display = info['cc']
@@ -272,7 +277,6 @@ def test_large_file_traffic(url_list):
                             elapsed = time.time() - start_time
                             speed = (total_downloaded * 8) / (1_000_000 * elapsed) if elapsed > 0 else 0
                             
-                            # Progress Bar (Console Only)
                             if total_size > 0:
                                 percent = 100 * (total_downloaded / total_size)
                                 bar_len = 20
@@ -290,8 +294,13 @@ def test_large_file_traffic(url_list):
 
             sys.stdout.write("\r" + " " * 100 + "\r")
             
-            # Log Result with IP and CC, truncated URL to 58 chars
             log(f"{url[:58]:<60} | {ip_display:<15} | {cc_display:<4} | {size_mb:<10.2f} | {duration:<10.2f} | {avg_mbps:<15.2f}")
+
+            # Apply Request Delay
+            if request_delay > 0:
+                # We log the delay so the user knows why it paused
+                # sys.stdout.write(f"Waiting {request_delay}s...\r")
+                time.sleep(request_delay)
 
         except Exception as e:
             sys.stdout.write("\r" + " " * 100 + "\r")
@@ -306,17 +315,32 @@ def test_large_file_traffic(url_list):
 def main():
     setup_logging()
 
+    # --- Argument Parser ---
+    parser = argparse.ArgumentParser(description="Bandwidth Stress Tester")
+    
+    # Input Files
+    parser.add_argument("-w", "--websites", type=str, default="websites.txt", help="Path to websites file")
+    parser.add_argument("-f", "--files", type=str, default="files.txt", help="Path to large files file")
+    
+    # Timing Controls
+    parser.add_argument("-t", "--time", type=int, default=5, help="Total script run time in MINUTES (default: 5)")
+    parser.add_argument("-l", "--loop-delay", type=int, default=30, help="Seconds to pause between main loops (default: 30)")
+    parser.add_argument("-r", "--request-delay", type=int, default=5, help="Seconds to wait between specific web requests (default: 5)")
+
+    args = parser.parse_args()
+
     # --- Display System Public IP ---
     log("Checking System Public IP Address...")
     public_ip = get_system_public_ip()
     log(f"System Public IP: {public_ip}")
     log("-" * 30)
 
-    parser = argparse.ArgumentParser(description="Bandwidth Stress Tester")
-    parser.add_argument("-w", "--websites", type=str, default="websites.txt", help="Path to websites file")
-    parser.add_argument("-f", "--files", type=str, default="files.txt", help="Path to large files file")
-    
-    args = parser.parse_args()
+    # --- Configuration Summary ---
+    log(f"CONFIGURATION:")
+    log(f"  Total Duration:   {args.time} minutes")
+    log(f"  Loop Delay:       {args.loop_delay} seconds")
+    log(f"  Request Delay:    {args.request_delay} seconds")
+    log("-" * 30)
 
     log("Loading target lists...")
     websites = get_urls_from_file(args.websites)
@@ -329,10 +353,10 @@ def main():
         return
 
     start_time = time.time()
-    end_time = start_time + (TEST_DURATION_MINUTES * 60)
+    end_time = start_time + (args.time * 60)
     iteration = 1
     
-    log(f"Starting Bandwidth Stress Test for {TEST_DURATION_MINUTES} minutes.")
+    log(f"Starting Bandwidth Stress Test.")
     log(f"Press Ctrl+C to stop manually.\n")
 
     try:
@@ -340,14 +364,16 @@ def main():
             current_time_str = time.strftime("%H:%M:%S", time.localtime())
             log(f"\n>>> ITERATION {iteration} STARTING AT {current_time_str} <<<")
             
-            #test_website_traffic(websites)
-            test_large_file_traffic(large_files)
+            # Pass the request delay to the testing functions
+            #test_website_traffic(websites, args.request_delay)
+            test_large_file_traffic(large_files, args.request_delay)
             
             iteration += 1
             
+            # Check if time is remaining before sleeping
             if time.time() < end_time:
-                log(f"\nIteration complete. Cooling down for {LOOP_DELAY} seconds...")
-                time.sleep(LOOP_DELAY)
+                log(f"\nIteration complete. Cooling down for {args.loop_delay} seconds...")
+                time.sleep(args.loop_delay)
             
     except KeyboardInterrupt:
         log("\n\nTest stopped by user.")
