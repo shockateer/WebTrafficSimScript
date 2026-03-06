@@ -10,6 +10,8 @@ import warnings
 import argparse
 import datetime
 import socket
+import subprocess
+import ipaddress
 from urllib.parse import urljoin, urlparse
 
 # --- Configuration Constants (Defaults handled in argparse) ---
@@ -59,14 +61,34 @@ def log(message, end="\n"):
             pass
 
 def get_system_public_ip():
-    """Fetches the external public IP address of this system."""
+    """
+    Fetches the external public IP address using PowerShell.
+    Validates the result is a proper IP format.
+    """
     try:
-        response = requests.get('https://api.ipify.org', timeout=5)
-        if response.status_code == 200:
-            return response.text.strip()
-    except Exception:
+        # The specific PowerShell command requested
+        ps_command = "(Invoke-WebRequest -Uri https://icanhazip.com -UseBasicParsing).Content.Trim()"
+        
+        # execution via subprocess
+        result = subprocess.run(
+            ["powershell", "-Command", ps_command],
+            capture_output=True,
+            text=True,
+            shell=True
+        )
+        
+        # Get output and strip whitespace
+        ip_str = result.stdout.strip()
+        
+        # Validate format using ipaddress library
+        # This will raise a ValueError if ip_str is not a valid IPv4 or IPv6 address
+        ipaddress.ip_address(ip_str)
+        
+        return ip_str
+
+    except (subprocess.SubprocessError, ValueError, Exception):
+        # Return "Unavailable" on any error (execution fail or validation fail)
         return "Unavailable"
-    return "Unavailable"
 
 def get_ip_info(url):
     """
@@ -193,7 +215,6 @@ def test_website_traffic(url_list, request_delay):
                         downloaded_files.append(fname)
                         total_bytes += len(res.content)
                     
-                    # Apply Request Delay after every sub-page
                     if request_delay > 0:
                         time.sleep(request_delay)
 
@@ -202,14 +223,8 @@ def test_website_traffic(url_list, request_delay):
 
             # 5. Stats
             duration = time.time() - start_time
-            # Subtract the artificial delays from the duration calculation to get true speed?
-            # Normally, for bandwidth testing, we want RAW download time. 
-            # However, since the delays happen sequentially, 'duration' currently INCLUDES sleep time.
-            # To get accurate Mbps of the actual transfer, we should ideally exclude sleep time.
-            # BUT, to keep it simple and show wall-clock time for the task, we leave it. 
-            # Note: This will make Mbps look lower if delays are high.
             
-            # Recalculating duration to exclude sleep for accurate Mbps reporting:
+            # Subtract sleep time for accurate Mbps calculation
             total_slept = (1 + len(links_to_visit)) * request_delay
             active_duration = duration - total_slept
             if active_duration <= 0: active_duration = 0.001
@@ -298,8 +313,6 @@ def test_large_file_traffic(url_list, request_delay):
 
             # Apply Request Delay
             if request_delay > 0:
-                # We log the delay so the user knows why it paused
-                # sys.stdout.write(f"Waiting {request_delay}s...\r")
                 time.sleep(request_delay)
 
         except Exception as e:
@@ -327,9 +340,13 @@ def main():
     parser.add_argument("-l", "--loop-delay", type=int, default=30, help="Seconds to pause between main loops (default: 30)")
     parser.add_argument("-r", "--request-delay", type=int, default=5, help="Seconds to wait between specific web requests (default: 5)")
 
+    # Enable/Disable Flags
+    parser.add_argument("--no-web", action="store_true", help="Disable the Website Crawl test")
+    parser.add_argument("--no-files", action="store_true", help="Disable the Large File Download test")
+
     args = parser.parse_args()
 
-    # --- Display System Public IP ---
+    # --- Display System Public IP (PowerShell Method) ---
     log("Checking System Public IP Address...")
     public_ip = get_system_public_ip()
     log(f"System Public IP: {public_ip}")
@@ -340,16 +357,27 @@ def main():
     log(f"  Total Duration:   {args.time} minutes")
     log(f"  Loop Delay:       {args.loop_delay} seconds")
     log(f"  Request Delay:    {args.request_delay} seconds")
+    log(f"  Web Test:         {'DISABLED' if args.no_web else 'ENABLED'}")
+    log(f"  File Test:        {'DISABLED' if args.no_files else 'ENABLED'}")
     log("-" * 30)
 
     log("Loading target lists...")
     websites = get_urls_from_file(args.websites)
     large_files = get_urls_from_file(args.files)
 
-    log(f"Loaded {len(websites)} websites and {len(large_files)} large files.")
+    if not args.no_web:
+        log(f"Loaded {len(websites)} websites.")
+    if not args.no_files:
+        log(f"Loaded {len(large_files)} large files.")
 
-    if not websites and not large_files:
-        log("Error: No URLs found in text files. Exiting.")
+    # Validation: Don't start if everything is disabled or empty
+    if args.no_web and args.no_files:
+        log("Error: Both tests are disabled via arguments. Exiting.")
+        return
+    
+    # Validation: Check if lists are empty only if we intend to run them
+    if (not args.no_web and not websites) and (not args.no_files and not large_files):
+        log("Error: No URLs found in text files for enabled tests. Exiting.")
         return
 
     start_time = time.time()
@@ -364,13 +392,16 @@ def main():
             current_time_str = time.strftime("%H:%M:%S", time.localtime())
             log(f"\n>>> ITERATION {iteration} STARTING AT {current_time_str} <<<")
             
-            # Pass the request delay to the testing functions
-            test_website_traffic(websites, args.request_delay)
-            #test_large_file_traffic(large_files, args.request_delay)
+            # Run Website Test if not disabled
+            if not args.no_web and websites:
+                test_website_traffic(websites, args.request_delay)
+            
+            # Run Large File Test if not disabled
+            if not args.no_files and large_files:
+                test_large_file_traffic(large_files, args.request_delay)
             
             iteration += 1
             
-            # Check if time is remaining before sleeping
             if time.time() < end_time:
                 log(f"\nIteration complete. Cooling down for {args.loop_delay} seconds...")
                 time.sleep(args.loop_delay)
