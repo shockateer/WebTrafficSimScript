@@ -1,0 +1,1 @@
+C:\Users\Fortinet\Documents\WebTrafficSimScript\BGInfo\Bginfo64.exe "C:\Users\Fortinet\Documents\WebTrafficSimScript\BGInfo\QuickBGInfoVMs.bgi" /silent /nolicprompt /timer:1
