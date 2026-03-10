@@ -16,13 +16,13 @@ $FileList = "files.txt"
 
 # TIMING SETTINGS
 # Total time to run the script (in minutes)
-$RunTimeMinutes = 10
+$RunTimeMinutes = 1440
 
 # Time to pause between the end of one loop and the start of the next (in seconds)
 $LoopDelay = 30
 
 # Time to pause after every single download request (in seconds)
-$RequestDelay = 2
+$RequestDelay = 1
 
 # TOGGLE TESTS
 # Set these to $true to DISABLE a specific test, or $false to RUN it.
