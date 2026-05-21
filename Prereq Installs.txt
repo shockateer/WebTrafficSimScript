@@ -1,1 +1,4 @@
+winget install --id Git.Git -e --source winget
+winget install --id Python.Python.3.9 -e --source winget
+
 py -m pip install lxml requests beautifulsoup4
